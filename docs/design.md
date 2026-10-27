@@ -25,7 +25,7 @@ Seatlock sells tickets when demand is far higher than supply: a big concert wher
 ```
                       ┌──────────────────────── Seatlock ─────────────────────────┐
  Client ──HTTP──►     │  API (Node cluster)                                       │
-                      │   ├─ seat map (cached in Redis, 1s)                        │
+                      │   ├─ seat map (cached 1s per process, single-flight)       │
                       │   ├─ holds ──► Postgres (truth)  [+ Redis gate, strategy 3]│
                       │   ├─ checkout ──► mock payment gateway                     │
                       │   ├─ webhooks ◄── mock payment gateway (signed)            │
@@ -41,7 +41,7 @@ Postgres is the source of truth for every seat, hold, payment and order. Redis i
 
 ## Seated booking flow
 
-1. `GET /v1/events/:id/seats`: the seat map. Cached for 1 second, so 50,000 users refreshing it cost about one database query per second. The map can be up to a second out of date. That's fine because step 2 is the real check.
+1. `GET /v1/events/:id/seats`: the seat map. Each API process keeps the finished JSON for 1 second, and when it expires, concurrent requests share one query instead of all querying at once (single-flight, which prevents a cache stampede). So 50,000 users refreshing it cost about one query per second per API process. The map can be up to a second out of date. That's fine because step 2 is the real check.
 2. `POST /v1/events/:id/holds` with `Idempotency-Key`: hold 1 to 6 seats, all or nothing, for 10 minutes. `201` with the hold, or `409` with the seats that were taken.
 3. `POST /v1/holds/:id/checkout`: creates a payment at the gateway and returns its id.
 4. The user pays at the gateway. The gateway calls `POST /v1/webhooks/gateway`.
@@ -87,6 +87,8 @@ If any seat's update matches 0 rows, someone else got there first: roll back and
 
 **3. Redis gate, then Postgres**
 A Lua script checks that every requested seat key is free and sets them all with a 10-minute TTL, in one atomic step. Most losing requests stop here, in about a millisecond, without touching Postgres. Winners then run strategy 2 in Postgres, which stays the source of truth: a Redis lock alone isn't enough, because Redis can lose keys (a restart, a failover) and a paused process can still act after its lock expired. If the Postgres step fails, the Redis keys are released.
+
+The hold id is derived from the user and the Idempotency-Key, and is the value stored in each seat key. A client retry that arrives while the first attempt is still running recognises its own keys instead of getting a 409 for its own seats.
 
 All seat keys for one event share a hash tag (`seat:{eventId}:...`) so the script still works on a Redis Cluster.
 

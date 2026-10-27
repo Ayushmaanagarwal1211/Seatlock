@@ -6,5 +6,7 @@
   "features": {
     "ghcr.io/devcontainers/features/docker-in-docker:2": {}
   },
-  "postCreateCommand": "npm install && cp -n .env.example .env"
+  "postCreateCommand": "npm install && cp -n .env.example .env",
+  "forwardPorts": [4000],
+  "portsAttributes": { "4000": { "label": "Seatlock API" } }
 }
