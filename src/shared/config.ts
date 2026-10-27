@@ -32,6 +32,13 @@ const schema = z.object({
   // Reconciler: asks the gateway about payments still pending after RECONCILE_AFTER_MS
   RECONCILE_INTERVAL_MS: z.coerce.number().int().positive().default(10_000),
   RECONCILE_AFTER_MS: z.coerce.number().int().nonnegative().default(120_000),
+
+  // Outbox dispatcher: confirmation emails through Relay, refunds through the gateway.
+  // Without RELAY_URL, emails are only logged.
+  RELAY_URL: z.string().min(1).optional(),
+  DISPATCH_INTERVAL_MS: z.coerce.number().int().positive().default(200),
+  DISPATCH_BATCH_SIZE: z.coerce.number().int().positive().default(100),
+  DISPATCH_CONCURRENCY: z.coerce.number().int().positive().default(20),
 });
 
 // Fail fast at startup if config is missing, instead of failing on the first request.

@@ -4,6 +4,8 @@ import { createApp } from '../../src/api/app';
 import { handleGatewayEvent } from '../../src/api/payments/payments.service';
 import { createGateway } from '../../src/gateway/gateway-app';
 import { WebhookChaos } from '../../src/gateway/webhook-sender';
+import { dispatchOnce } from '../../src/jobs/dispatcher';
+import { LogEmailSender } from '../../src/jobs/email-sender';
 import { reconcileOnce } from '../../src/jobs/reconciler';
 import { GatewayClient } from '../../src/shared/gateway-client';
 import { GatewayEvent } from '../../src/shared/gateway-types';
@@ -314,6 +316,18 @@ describe('late payments', () => {
     ]);
     const outbox = await pool.query<{ topic: string }>('SELECT topic FROM outbox ORDER BY id');
     expect(outbox.rows.map((r) => r.topic)).toEqual(['payment.refund', 'booking.failed']);
+
+    // The dispatcher asks the gateway for the refund; the gateway confirms it by webhook.
+    const dispatched = await dispatchOnce({
+      pool,
+      email: new LogEmailSender(),
+      gateway: system.gatewayClient,
+      batchSize: 10,
+      concurrency: 2,
+    });
+    expect(dispatched).toMatchObject({ sent: 2 });
+    await waitFor(async () => (await paymentStatus(checkout.body.paymentId)) === 'refunded');
+    expect(await system.stats()).toMatchObject({ capturedPaise: 200_000, refundedPaise: 200_000 });
   });
 });
 

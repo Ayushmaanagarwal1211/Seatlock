@@ -115,7 +115,7 @@ The user took 12 minutes. Their hold expired at 10, and maybe someone else booke
 
 ### Side effects through the outbox
 
-Confirmation emails (through Relay) and refunds (through the gateway) are written to the `outbox` table in the same transaction as the booking or payment change. The dispatcher delivers them afterwards and retries until they succeed. Each call carries an idempotency key (`booking-confirmed:<bookingId>`, `refund:<paymentId>`), so a retried call can't send two emails or two refunds. Relay already deduplicates on its `Idempotency-Key`.
+Confirmation emails (through Relay) and refunds (through the gateway) are written to the `outbox` table in the same transaction as the booking or payment change. The dispatcher delivers them afterwards (`FOR UPDATE SKIP LOCKED`, so several dispatchers can run at once). A failed row is retried with a growing delay (5s, 10s, 20s, ... up to 10 minutes) without holding up the rows behind it; a row that can never succeed (e.g. Relay rejects it as invalid) is parked with its error for a human to look at. Each call carries an idempotency key (`booking-confirmed:<bookingId>`, `refund:<paymentId>`), so a retried call can't send two emails or two refunds. Relay already deduplicates on its `Idempotency-Key`.
 
 ## Flash sale
 
