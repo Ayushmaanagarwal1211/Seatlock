@@ -84,9 +84,24 @@ async function findByKey(pool: Pool, userId: string, key: string): Promise<HoldR
   return rows[0] ?? null;
 }
 
-// A hold is only visible to the user who owns it.
-export async function getHold(pool: Pool, holdId: string, userId: string): Promise<HoldRow | null> {
-  const { rows } = await pool.query<HoldRow>('SELECT * FROM holds WHERE id = $1 AND user_id = $2', [holdId, userId]);
+export interface HoldDetails extends HoldRow {
+  payment_id: string | null;
+  payment_status: string | null;
+  booking_id: string | null;
+}
+
+// A hold, its latest payment and its booking. Only visible to the user who owns it.
+export async function getHold(pool: Pool, holdId: string, userId: string): Promise<HoldDetails | null> {
+  const { rows } = await pool.query<HoldDetails>(
+    `SELECT h.*, p.id AS payment_id, p.status AS payment_status, b.id AS booking_id
+       FROM holds h
+       LEFT JOIN LATERAL (
+         SELECT id, status FROM payments WHERE hold_id = h.id ORDER BY created_at DESC LIMIT 1
+       ) p ON true
+       LEFT JOIN bookings b ON b.hold_id = h.id
+      WHERE h.id = $1 AND h.user_id = $2`,
+    [holdId, userId],
+  );
   return rows[0] ?? null;
 }
 

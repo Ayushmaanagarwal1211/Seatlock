@@ -21,6 +21,17 @@ const schema = z.object({
   HOLD_STRATEGY: z.enum(['pessimistic', 'optimistic', 'redis']).default('pessimistic'),
   // How long each API process reuses a computed seat map
   SEAT_MAP_CACHE_MS: z.coerce.number().int().nonnegative().default(1000),
+
+  // Payment gateway (the mock in src/gateway in development)
+  GATEWAY_URL: z.string().min(1).default('http://localhost:4100'),
+  GATEWAY_API_KEY: z.string().min(1).default('sk_test_seatlock'),
+  GATEWAY_WEBHOOK_SECRET: z.string().min(1).default('whsec_test_seatlock'),
+  // Reject webhook signatures older than this (replay protection)
+  WEBHOOK_TOLERANCE_SECONDS: z.coerce.number().int().positive().default(300),
+
+  // Reconciler: asks the gateway about payments still pending after RECONCILE_AFTER_MS
+  RECONCILE_INTERVAL_MS: z.coerce.number().int().positive().default(10_000),
+  RECONCILE_AFTER_MS: z.coerce.number().int().nonnegative().default(120_000),
 });
 
 // Fail fast at startup if config is missing, instead of failing on the first request.

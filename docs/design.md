@@ -104,7 +104,7 @@ The mock gateway behaves like Razorpay or Stripe, including the inconvenient par
 Handling:
 - **Duplicates**: each event id is inserted into `webhook_events`; a second copy finds it already there and does nothing.
 - **Out of order**: payment status only moves forward (`pending → succeeded | failed`, then `succeeded → refund_pending → refunded`). A `failed` that arrives after `succeeded` is ignored.
-- **Lost webhooks**: the reconciler asks the gateway about payments still `pending` after 2 minutes, and applies the answer through the same code path as a webhook.
+- **Lost webhooks**: the reconciler asks the gateway about payments still `pending` after 2 minutes, and applies the answer through the same code path as a webhook. Checkout does the same for the hold's pending payment, so a user whose card was declined can pay again even if the "failed" webhook hasn't arrived.
 - **Charged twice**: a partial unique index allows one live payment per hold.
 
 ### Late payment: the hold expired, then the payment succeeded

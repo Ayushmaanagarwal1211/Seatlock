@@ -2,9 +2,7 @@ import Redis from 'ioredis';
 import { Pool } from 'pg';
 import request from 'supertest';
 import { createApp } from '../../src/api/app';
-import { SeatMapCache } from '../../src/api/events/seat-map';
-import { createHoldStrategy } from '../../src/api/holds/strategies';
-import { createTestPool, createTestRedis, resetDatabase } from './helpers';
+import { createTestPool, createTestRedis, resetDatabase, testAppDeps } from './helpers';
 
 let pool: Pool;
 let redis: Redis;
@@ -13,8 +11,7 @@ let app: ReturnType<typeof createApp>;
 beforeAll(() => {
   pool = createTestPool();
   redis = createTestRedis();
-  // Cache off (0ms), so each test sees seat changes immediately.
-  app = createApp({ pool, holdStrategy: createHoldStrategy('pessimistic', pool, redis), seatMap: new SeatMapCache(pool, 0) });
+  app = createApp(testAppDeps(pool, redis));
 });
 
 afterAll(async () => {

@@ -1,6 +1,7 @@
 import cluster from 'node:cluster';
 import { config } from '../shared/config';
 import { createPool } from '../shared/db';
+import { GatewayClient } from '../shared/gateway-client';
 import { createRedis, waitForRedis } from '../shared/redis';
 import { createApp } from './app';
 import { SeatMapCache } from './events/seat-map';
@@ -51,6 +52,9 @@ async function runServer() {
     pool,
     holdStrategy: createHoldStrategy(config.HOLD_STRATEGY, pool, redis),
     seatMap: new SeatMapCache(pool, config.SEAT_MAP_CACHE_MS),
+    gateway: new GatewayClient(config.GATEWAY_URL, config.GATEWAY_API_KEY),
+    webhookSecret: config.GATEWAY_WEBHOOK_SECRET,
+    webhookToleranceSeconds: config.WEBHOOK_TOLERANCE_SECONDS,
   });
   const server = app.listen(config.PORT, () => {
     if (cluster.isPrimary) {
