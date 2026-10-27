@@ -1,0 +1,38 @@
+# Local infrastructure. Start with: npm run infra:up
+# (--wait makes it return only once every service with a healthcheck is healthy)
+# Passwords here are throwaway values for your laptop only.
+#
+# Ports are shifted from the defaults (5433, 6380) so this project can run next to Relay,
+# which sends Seatlock's confirmation emails.
+services:
+  postgres:
+    image: postgres:17
+    command: ["postgres", "-c", "max_connections=300", "-c", "shared_buffers=512MB"]
+    shm_size: 256mb
+    environment:
+      POSTGRES_USER: seatlock
+      POSTGRES_PASSWORD: seatlock
+      POSTGRES_DB: seatlock
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      # Creates the extra seatlock_test database used by integration tests
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h localhost -U seatlock -d seatlock"]
+      interval: 5s
+      retries: 10
+
+  # Used from step 2: the Redis hold strategy and the seat map cache
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+
+volumes:
+  postgres-data:
