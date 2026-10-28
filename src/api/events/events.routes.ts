@@ -39,6 +39,18 @@ export function eventsRouter({ pool, holdStrategy, seatMap }: AppDeps): Router {
     res.type('application/json').send(body);
   });
 
+  // GET /v1/events/:id/availability: only the ids of the seats that look free (cached ~1s)
+  router.get('/:id/availability', async (req, res) => {
+    const id = parseId(req.params.id, res, 'Event');
+    if (!id) return;
+    const body = await seatMap.getAvailability(id);
+    if (!body) {
+      res.status(404).json({ error: 'Event not found' });
+      return;
+    }
+    res.type('application/json').send(body);
+  });
+
   // POST /v1/events/:id/holds  (headers: X-User-Id, Idempotency-Key)
   // Holds 1 to maxSeatsPerHold seats, all or nothing, until the hold expires.
   router.post('/:id/holds', async (req, res) => {

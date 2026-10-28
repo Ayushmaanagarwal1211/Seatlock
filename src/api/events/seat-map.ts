@@ -23,21 +23,48 @@ export class SeatMapCache {
     private ttlMs: number,
   ) {}
 
-  // Returns the seat map as a JSON string (serialized once, not once per request), or null
-  // if the event doesn't exist.
-  async get(eventId: string): Promise<string | null> {
-    const hit = this.cached.get(eventId);
-    if (hit && hit.expiresAt > Date.now()) return hit.body;
-
-    const pending = this.inFlight.get(eventId);
-    if (pending) return pending;
-
-    const load = this.load(eventId).finally(() => this.inFlight.delete(eventId));
-    this.inFlight.set(eventId, load);
-    return load;
+  // The full seat map (labels, sections, prices, availability) as a JSON string, serialized
+  // once rather than once per request. Null if the event doesn't exist.
+  get(eventId: string): Promise<string | null> {
+    return this.cachedLoad(`map:${eventId}`, () => this.loadMap(eventId));
   }
 
-  private async load(eventId: string): Promise<string | null> {
+  // Just the ids of the available seats: a few KB instead of the whole map. The layout
+  // (labels, prices) never changes, so a client fetches it once and then polls this.
+  getAvailability(eventId: string): Promise<string | null> {
+    return this.cachedLoad(`available:${eventId}`, () => this.loadAvailability(eventId));
+  }
+
+  private cachedLoad(key: string, load: () => Promise<string | null>): Promise<string | null> {
+    const hit = this.cached.get(key);
+    if (hit && hit.expiresAt > Date.now()) return Promise.resolve(hit.body);
+
+    const pending = this.inFlight.get(key);
+    if (pending) return pending;
+
+    const loading = load()
+      .then((body) => {
+        if (body !== null && this.ttlMs > 0) this.cached.set(key, { body, expiresAt: Date.now() + this.ttlMs });
+        return body;
+      })
+      .finally(() => this.inFlight.delete(key));
+    this.inFlight.set(key, loading);
+    return loading;
+  }
+
+  private async loadAvailability(eventId: string): Promise<string | null> {
+    const event = await this.pool.query('SELECT 1 FROM events WHERE id = $1', [eventId]);
+    if (event.rows.length === 0) return null;
+    const { rows } = await this.pool.query<{ id: string }>(
+      `SELECT id FROM seats
+        WHERE event_id = $1 AND (status = 'available' OR (status = 'held' AND held_until <= now()))
+        ORDER BY id`,
+      [eventId],
+    );
+    return JSON.stringify({ eventId, generatedAt: new Date().toISOString(), availableSeatIds: rows.map((r) => Number(r.id)) });
+  }
+
+  private async loadMap(eventId: string): Promise<string | null> {
     const event = await this.pool.query('SELECT 1 FROM events WHERE id = $1', [eventId]);
     if (event.rows.length === 0) return null;
 
@@ -56,7 +83,7 @@ export class SeatMapCache {
         ORDER BY id`,
       [eventId],
     );
-    const body = JSON.stringify({
+    return JSON.stringify({
       eventId,
       generatedAt: new Date().toISOString(),
       seats: rows.map((s) => ({
@@ -67,7 +94,5 @@ export class SeatMapCache {
         available: s.available,
       })),
     });
-    if (this.ttlMs > 0) this.cached.set(eventId, { body, expiresAt: Date.now() + this.ttlMs });
-    return body;
   }
 }

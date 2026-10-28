@@ -39,6 +39,20 @@ const schema = z.object({
   DISPATCH_INTERVAL_MS: z.coerce.number().int().positive().default(200),
   DISPATCH_BATCH_SIZE: z.coerce.number().int().positive().default(100),
   DISPATCH_CONCURRENCY: z.coerce.number().int().positive().default(20),
+
+  // Flash sales. postgres = the hot-row baseline; redis-kafka = Redis gate, Kafka, batched writer
+  FLASH_STRATEGY: z.enum(['postgres', 'redis-kafka']).default('redis-kafka'),
+  KAFKA_BROKERS: z
+    .string()
+    .default('localhost:9092')
+    .transform((s) => s.split(',').map((b) => b.trim())),
+  FLASH_ORDERS_TOPIC: z.string().min(1).default('flash-orders'),
+  FLASH_TOPIC_PARTITIONS: z.coerce.number().int().positive().default(6),
+  // How long the API waits to fill a batch of orders before sending it to Kafka (like linger.ms)
+  PRODUCER_LINGER_MS: z.coerce.number().int().nonnegative().default(5),
+  ORDER_WRITER_GROUP: z.string().min(1).default('flash-order-writer'),
+  ORDER_WRITER_BATCH_SIZE: z.coerce.number().int().positive().default(500),
+  ORDER_WRITER_FLUSH_MS: z.coerce.number().int().positive().default(50),
 });
 
 // Fail fast at startup if config is missing, instead of failing on the first request.

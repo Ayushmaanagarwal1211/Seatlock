@@ -41,7 +41,7 @@ Postgres is the source of truth for every seat, hold, payment and order. Redis i
 
 ## Seated booking flow
 
-1. `GET /v1/events/:id/seats`: the seat map. Each API process keeps the finished JSON for 1 second, and when it expires, concurrent requests share one query instead of all querying at once (single-flight, which prevents a cache stampede). So 50,000 users refreshing it cost about one query per second per API process. The map can be up to a second out of date. That's fine because step 2 is the real check.
+1. `GET /v1/events/:id/seats`: the seat map (labels, sections, prices, availability). `GET /v1/events/:id/availability` returns only the ids of free seats, a few KB, for clients that already have the layout and just poll what's free. Each API process keeps the finished JSON for 1 second, and when it expires, concurrent requests share one query instead of all querying at once (single-flight, which prevents a cache stampede). So 50,000 users refreshing it cost about one query per second per API process. The map can be up to a second out of date. That's fine because step 2 is the real check.
 2. `POST /v1/events/:id/holds` with `Idempotency-Key`: hold 1 to 6 seats, all or nothing, for 10 minutes. `201` with the hold, or `409` with the seats that were taken.
 3. `POST /v1/holds/:id/checkout`: creates a payment at the gateway and returns its id.
 4. The user pays at the gateway. The gateway calls `POST /v1/webhooks/gateway`.

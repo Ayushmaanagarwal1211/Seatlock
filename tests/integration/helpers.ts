@@ -5,6 +5,7 @@ import Redis from 'ioredis';
 import { Pool } from 'pg';
 import type { AppDeps } from '../../src/api/app';
 import { createEvent } from '../../src/api/events/events.service';
+import { PostgresFlashStrategy } from '../../src/api/flash/flash-strategies';
 import { SeatMapCache } from '../../src/api/events/seat-map';
 import { createHoldStrategy } from '../../src/api/holds/strategies';
 import { createPool } from '../../src/shared/db';
@@ -47,7 +48,9 @@ export const TEST_GATEWAY_KEY = 'sk_test';
 export function testAppDeps(pool: Pool, redis: Redis, overrides: Partial<AppDeps> = {}): AppDeps {
   return {
     pool,
+    redis,
     holdStrategy: createHoldStrategy('pessimistic', pool, redis),
+    flashStrategy: new PostgresFlashStrategy(pool),
     seatMap: new SeatMapCache(pool, 0),
     gateway: new GatewayClient('http://localhost:1', TEST_GATEWAY_KEY),
     webhookSecret: TEST_WEBHOOK_SECRET,

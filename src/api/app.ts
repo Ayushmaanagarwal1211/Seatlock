@@ -1,9 +1,12 @@
 import express, { ErrorRequestHandler } from 'express';
+import Redis from 'ioredis';
 import { Pool } from 'pg';
 import { GatewayClient } from '../shared/gateway-client';
 import { bookingsRouter } from './bookings.routes';
 import { SeatMapCache } from './events/seat-map';
 import { eventsRouter } from './events/events.routes';
+import { FlashStrategy } from './flash/flash-strategies';
+import { flashRouter } from './flash/flash.routes';
 import { HoldStrategy } from './holds/hold-strategy';
 import { holdsRouter } from './holds/holds.routes';
 import { webhooksRouter } from './payments/webhooks.routes';
@@ -11,7 +14,9 @@ import { webhooksRouter } from './payments/webhooks.routes';
 // Everything the routes need, passed in so tests can build the app around a test database.
 export interface AppDeps {
   pool: Pool;
+  redis: Redis;
   holdStrategy: HoldStrategy;
+  flashStrategy: FlashStrategy;
   seatMap: SeatMapCache;
   gateway: GatewayClient;
   webhookSecret: string;
@@ -26,12 +31,13 @@ export function createApp(deps: AppDeps) {
 
   app.get('/health', async (_req, res) => {
     await deps.pool.query('SELECT 1');
-    res.json({ status: 'ok', holdStrategy: deps.holdStrategy.name });
+    res.json({ status: 'ok', holdStrategy: deps.holdStrategy.name, flashStrategy: deps.flashStrategy.name });
   });
 
   app.use('/v1/events', eventsRouter(deps));
   app.use('/v1/holds', holdsRouter(deps));
   app.use('/v1/bookings', bookingsRouter(deps));
+  app.use('/v1/flash-sales', flashRouter(deps));
 
   // Express 5 sends errors thrown in async handlers here automatically.
   const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {

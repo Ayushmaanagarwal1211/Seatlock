@@ -72,6 +72,16 @@ describe('events and seat map', () => {
     expect(map.body.seats[1].available).toBe(true);
   });
 
+  it('lists only the available seat ids', async () => {
+    const { eventId, seats } = await createEvent();
+    await postHold(eventId, [seats[0].id]).expect(201);
+
+    const res = await request(app).get(`/v1/events/${eventId}/availability`).expect(200);
+
+    expect(res.body.availableSeatIds).toHaveLength(39);
+    expect(res.body.availableSeatIds).not.toContain(seats[0].id);
+  });
+
   it('returns 404 for an unknown event', async () => {
     await request(app).get('/v1/events/00000000-0000-0000-0000-000000000000/seats').expect(404);
     await request(app).get('/v1/events/not-a-uuid').expect(404);

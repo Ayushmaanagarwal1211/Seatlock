@@ -4,3 +4,5 @@ coverage/
 .env
 *.log
 .DS_Store
+# Raw stress test data (the report.md files are worth committing)
+load-results/*/results.json

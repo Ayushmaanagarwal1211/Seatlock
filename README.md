@@ -13,7 +13,7 @@ Design and trade-offs: [docs/design.md](docs/design.md).
 - [x] Step 2: Seat map, holds, and three locking strategies (pessimistic, optimistic, Redis gate)
 - [x] Step 3: Checkout, mock payment gateway, signed idempotent webhooks, refunds for late payments
 - [x] Step 4: Confirmation emails through [Relay](https://github.com/Ayushmaanagarwal1211/notificatiion_service)
-- [ ] Step 5: Flash sale: hot-row baseline, Redis gate, Kafka, batched order writer
+- [x] Step 5: Flash sale: hot-row baseline, Redis gate, Kafka, batched order writer
 - [ ] Step 6: Load and stress tests with correctness checks
 - [ ] Step 7: Final README and results
 

@@ -361,6 +361,26 @@ describe('reconciler', () => {
     expect(await paymentStatus(first.body.paymentId)).toBe('failed');
   });
 
+  it('settles a refund whose confirmation webhook never arrived', async () => {
+    // Every webhook is lost: the reconciler has to do all the work.
+    system = await startSystem({ duplicateRate: 0, maxDelayMs: 0, dropRate: 1 });
+    const { event, seatIds } = await createTestEvent(pool);
+    const holdId = await system.holdSeats(event.id, [seatIds[0]]);
+    const checkout = await system.checkout(holdId);
+    await expireHold(holdId);
+    await system.holdSeats(event.id, [seatIds[0]], 'bob'); // Bob takes the seat: Alice must be refunded
+    await system.pay(checkout.body.gatewayPaymentId, 'succeeded');
+
+    await reconcileOnce(pool, system.gatewayClient, system.deps.holdStrategy, 0);
+    expect(await paymentStatus(checkout.body.paymentId)).toBe('refund_pending');
+    await system.gatewayClient.refund(checkout.body.paymentId, checkout.body.gatewayPaymentId);
+
+    const result = await reconcileOnce(pool, system.gatewayClient, system.deps.holdStrategy, 0);
+
+    expect(result.refunded).toBe(1);
+    expect(await paymentStatus(checkout.body.paymentId)).toBe('refunded');
+  });
+
   it('fails payments the gateway never heard of', async () => {
     system = await startSystem();
     const { event, seatIds } = await createTestEvent(pool);

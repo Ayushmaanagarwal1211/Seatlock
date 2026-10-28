@@ -17,3 +17,8 @@ export function testRedisUrl(): string {
   loadEnv();
   return process.env.TEST_REDIS_URL ?? 'redis://localhost:6380/1';
 }
+
+export function testKafkaBrokers(): string[] {
+  loadEnv();
+  return (process.env.TEST_KAFKA_BROKERS ?? 'localhost:9092').split(',');
+}

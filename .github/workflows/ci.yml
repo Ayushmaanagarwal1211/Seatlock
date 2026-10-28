@@ -30,9 +30,30 @@ jobs:
           --health-interval 5s
           --health-retries 10
 
+      kafka:
+        image: apache/kafka:4.1.0
+        ports: ["9092:9092"]
+        env:
+          KAFKA_NODE_ID: 1
+          KAFKA_PROCESS_ROLES: broker,controller
+          KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+          KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+          KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+          KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+          KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+          KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+          KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+          KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+          KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+        options: >-
+          --health-cmd "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list"
+          --health-interval 10s
+          --health-retries 10
+
     env:
       TEST_DATABASE_URL: postgres://seatlock:seatlock@localhost:5433/seatlock_test
       TEST_REDIS_URL: redis://localhost:6380/1
+      TEST_KAFKA_BROKERS: localhost:9092
 
     steps:
       - uses: actions/checkout@v7
@@ -45,5 +66,5 @@ jobs:
       - run: npm run build
       - name: Unit tests
         run: npm test
-      - name: Integration tests (Postgres + Redis)
+      - name: Integration tests (Postgres + Redis + Kafka)
         run: npm run test:integration

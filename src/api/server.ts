@@ -2,9 +2,11 @@ import cluster from 'node:cluster';
 import { config } from '../shared/config';
 import { createPool } from '../shared/db';
 import { GatewayClient } from '../shared/gateway-client';
+import { BatchingProducer, createProducer, ensureTopic } from '../shared/kafka';
 import { createRedis, waitForRedis } from '../shared/redis';
 import { createApp } from './app';
 import { SeatMapCache } from './events/seat-map';
+import { FlashStrategy, PostgresFlashStrategy, RedisKafkaFlashStrategy } from './flash/flash-strategies';
 import { createHoldStrategy } from './holds/strategies';
 
 /**
@@ -48,8 +50,24 @@ async function runServer() {
   const redis = createRedis(config.REDIS_URL);
   await waitForRedis(redis);
 
+  let flashStrategy: FlashStrategy = new PostgresFlashStrategy(pool);
+  let producer: BatchingProducer | null = null;
+  if (config.FLASH_STRATEGY === 'redis-kafka') {
+    if (cluster.isPrimary || cluster.worker?.id === 1) {
+      await ensureTopic(config.KAFKA_BROKERS, config.FLASH_ORDERS_TOPIC, config.FLASH_TOPIC_PARTITIONS);
+    }
+    producer = new BatchingProducer(
+      createProducer(config.KAFKA_BROKERS, `seatlock-api-${process.pid}`),
+      config.FLASH_ORDERS_TOPIC,
+      config.PRODUCER_LINGER_MS,
+    );
+    flashStrategy = new RedisKafkaFlashStrategy(pool, redis, producer);
+  }
+
   const app = createApp({
     pool,
+    redis,
+    flashStrategy,
     holdStrategy: createHoldStrategy(config.HOLD_STRATEGY, pool, redis),
     seatMap: new SeatMapCache(pool, config.SEAT_MAP_CACHE_MS),
     gateway: new GatewayClient(config.GATEWAY_URL, config.GATEWAY_API_KEY),
@@ -58,7 +76,10 @@ async function runServer() {
   });
   const server = app.listen(config.PORT, () => {
     if (cluster.isPrimary) {
-      console.log(`API listening on http://localhost:${config.PORT} (hold strategy: ${config.HOLD_STRATEGY})`);
+      console.log(
+        `API listening on http://localhost:${config.PORT} ` +
+          `(hold strategy: ${config.HOLD_STRATEGY}, flash strategy: ${config.FLASH_STRATEGY})`,
+      );
     }
   });
 
@@ -68,9 +89,11 @@ async function runServer() {
     if (closing) return;
     closing = true;
     if (cluster.isPrimary) console.log(`${signal} received, shutting down...`);
-    server.close(() => {
+    server.close(async () => {
+      await producer?.close();
       redis.disconnect();
-      pool.end().then(() => process.exit(0));
+      await pool.end();
+      process.exit(0);
     });
   }
   process.on('SIGINT', () => shutdown('SIGINT'));
