@@ -41,6 +41,11 @@ export class OrderConsumer {
       groupId: options.groupId,
       bootstrapBrokers: options.brokers,
       deserializers: stringDeserializers,
+      // If a writer dies, Kafka moves its partitions to the others once it misses heartbeats
+      // for sessionTimeout. The client's default is a minute; 10s keeps the stall short.
+      sessionTimeout: 10_000,
+      rebalanceTimeout: 15_000,
+      heartbeatInterval: 1000,
     });
   }
 

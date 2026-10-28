@@ -1,4 +1,4 @@
-import { Admin, Producer, ProduceAcks, stringSerializers } from '@platformatic/kafka';
+import { Admin, ListOffsetTimestamps, Producer, ProduceAcks, stringSerializers } from '@platformatic/kafka';
 
 export interface FlashOrderMessage {
   orderId: string;
@@ -31,6 +31,36 @@ export async function ensureTopic(brokers: string[], topic: string, partitions: 
     }
   } catch (err) {
     if (!String((err as Error).message).includes('already exists')) throw err;
+  } finally {
+    await admin.close();
+  }
+}
+
+/**
+ * Consumer lag: how many messages in the topic the group hasn't committed yet.
+ * 0 means the consumers have processed everything that was published.
+ */
+export async function consumerLag(brokers: string[], groupId: string, topic: string, partitions: number): Promise<number> {
+  const admin = new Admin({ clientId: 'seatlock-lag', bootstrapBrokers: brokers });
+  try {
+    const [group] = await admin.listConsumerGroupOffsets({ groups: [groupId] });
+    const committed = new Map(
+      (group?.topics.find((t) => t.name === topic)?.partitions ?? []).map((p) => [p.partitionIndex, p.committedOffset]),
+    );
+    const [latest] = await admin.listOffsets({
+      topics: [
+        {
+          name: topic,
+          partitions: Array.from({ length: partitions }, (_, i) => ({ partitionIndex: i, timestamp: ListOffsetTimestamps.LATEST })),
+        },
+      ],
+    });
+    let lag = 0n;
+    for (const p of latest.partitions) {
+      const done = committed.get(p.partitionIndex) ?? 0n;
+      lag += p.offset - (done > 0n ? done : 0n);
+    }
+    return Number(lag);
   } finally {
     await admin.close();
   }

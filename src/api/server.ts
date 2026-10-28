@@ -41,8 +41,8 @@ function runPrimary(processes: number) {
     shuttingDown = true;
     for (const worker of Object.values(cluster.workers ?? {})) worker?.process.kill('SIGTERM');
   };
-  process.on('SIGINT', () => shutdown('SIGINT'));
-  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => void shutdown('SIGINT'));
+  process.on('SIGTERM', () => void shutdown('SIGTERM'));
 }
 
 async function runServer() {
@@ -83,19 +83,29 @@ async function runServer() {
     }
   });
 
-  // Graceful shutdown: stop accepting requests, let in-flight ones finish, then close connections.
+  // Count requests in progress, so shutdown can wait for them.
+  let inFlight = 0;
+  server.on('request', (_req, res) => {
+    inFlight++;
+    res.on('close', () => inFlight--);
+  });
+
+  // Graceful shutdown: stop accepting connections, let in-flight requests finish (up to
+  // 10s), and only then close the database, Redis and Kafka connections they use.
   let closing = false;
-  function shutdown(signal: string) {
+  async function shutdown(signal: string) {
     if (closing) return;
     closing = true;
     if (cluster.isPrimary) console.log(`${signal} received, shutting down...`);
-    server.close(async () => {
-      await producer?.close();
-      redis.disconnect();
-      await pool.end();
-      process.exit(0);
-    });
+    server.close();
+    server.closeIdleConnections();
+    const deadline = Date.now() + 10_000;
+    while (inFlight > 0 && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
+    await producer?.close();
+    redis.disconnect();
+    await pool.end();
+    process.exit(0);
   }
-  process.on('SIGINT', () => shutdown('SIGINT'));
-  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => void shutdown('SIGINT'));
+  process.on('SIGTERM', () => void shutdown('SIGTERM'));
 }

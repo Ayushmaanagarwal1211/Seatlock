@@ -63,6 +63,19 @@ export async function getEvent(pool: Pool, id: string): Promise<EventRow | null>
   return rows[0] ?? null;
 }
 
+// Hold settings (hold_seconds, max_seats_per_hold) never change after an event is created,
+// so each process keeps them for a few seconds instead of reading them on every hold request.
+const settingsCache = new Map<string, { event: EventRow; expiresAt: number }>();
+const SETTINGS_TTL_MS = 5000;
+
+export async function getEventSettings(pool: Pool, id: string): Promise<EventRow | null> {
+  const hit = settingsCache.get(id);
+  if (hit && hit.expiresAt > Date.now()) return hit.event;
+  const event = await getEvent(pool, id);
+  if (event) settingsCache.set(id, { event, expiresAt: Date.now() + SETTINGS_TTL_MS });
+  return event;
+}
+
 export function toEventResponse(event: EventRow) {
   return {
     id: event.id,

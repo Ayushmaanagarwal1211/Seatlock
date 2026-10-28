@@ -2,7 +2,7 @@ import { Pool } from 'pg';
 import { withTransaction } from '../../shared/db';
 import { DEADLOCK_DETECTED, pgErrorCode, SERIALIZATION_FAILURE } from '../../shared/pg-errors';
 import { uuidFromName } from '../../shared/uuid';
-import { getEvent } from '../events/events.service';
+import { getEventSettings } from '../events/events.service';
 import { hashRequest } from '../request-hash';
 import { HoldRow, HoldStrategy } from './hold-strategy';
 
@@ -31,11 +31,11 @@ export async function createHold(pool: Pool, strategy: HoldStrategy, input: Crea
   const seatIds = [...input.seatIds].sort((a, b) => a - b);
   const requestHash = hashRequest([input.eventId, ...seatIds]);
 
-  // Fast path for retries: this key was already used.
-  const existing = await findByKey(pool, input.userId, input.idempotencyKey);
-  if (existing) return replay(existing, requestHash);
-
-  const event = await getEvent(pool, input.eventId);
+  // No idempotency lookup up front: under contention most requests lose, and a lookup per
+  // request would be wasted database work. A retry is recognised when it gets there: its
+  // seats are taken by its own hold, or its hold id (derived from the key) already exists.
+  // Either way it ends below, where we check the key.
+  const event = await getEventSettings(pool, input.eventId);
   if (!event) return { kind: 'event_not_found' };
   if (seatIds.length > event.max_seats_per_hold) return { kind: 'too_many_seats', max: event.max_seats_per_hold };
 
@@ -62,8 +62,8 @@ export async function createHold(pool: Pool, strategy: HoldStrategy, input: Crea
 
   if (result.kind === 'held') return { kind: 'created', hold: result.hold };
 
-  // Two requests with the SAME key raced, and the other one won: its seats now look taken
-  // to us. That's not a conflict, it's our own hold: return it.
+  // Before answering 409: was this key used already? Then it's a retry (or two copies of
+  // the same request racing), and the seats look taken because they're OUR hold's.
   if (result.kind === 'key_taken' || result.kind === 'unavailable') {
     const winner = await findByKey(pool, input.userId, input.idempotencyKey);
     if (winner) return replay(winner, requestHash);
